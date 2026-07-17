@@ -4,7 +4,9 @@ from dotenv import load_dotenv
 import streamlit as st
 from src.assistant import StadiumAssistant
 
+# Load API key: Streamlit Cloud secrets first, then .env for local dev
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
+GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY")
 
 # ── Page Config ──
 st.set_page_config(page_title="Stadium Assistant", page_icon="⚽", layout="centered")
@@ -206,11 +208,11 @@ with st.sidebar:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "assistant" not in st.session_state:
-    st.session_state.assistant = StadiumAssistant(api_key=os.environ.get("GEMINI_API_KEY"))
+    st.session_state.assistant = StadiumAssistant(api_key=GEMINI_API_KEY)
 
 # ── API Key Warning (hidden from main UI, only in backend) ──
-if not os.getenv("GEMINI_API_KEY"):
-    st.warning("⚠️ GEMINI_API_KEY not found. Add it to your .env file.", icon="⚠️")
+if not GEMINI_API_KEY:
+    st.warning("⚠️ GEMINI_API_KEY not found. Add it to your .env file or Streamlit secrets.", icon="⚠️")
 
 # ── Chat Display ──
 st.markdown('<div class="chat-scroll">', unsafe_allow_html=True)
