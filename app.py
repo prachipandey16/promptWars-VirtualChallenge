@@ -7,26 +7,31 @@ stadium context selection, multilingual support, and role-based assistance.
 
 import os
 from datetime import datetime, date
-from dotenv import load_dotenv
+from typing import Optional
+
 import streamlit as st
+from dotenv import load_dotenv
+
 from src.assistant import StadiumAssistant
-
-# Load API key: Streamlit Cloud secrets first, then .env for local dev
-load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
-try:
-    GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY")
-except Exception:
-    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-
-# ── Page Config ──
-st.set_page_config(
-    page_title="Stadium Assistant — FIFA World Cup 2026",
-    page_icon="⚽",
-    layout="centered",
+from src.constants import (
+    CHAT_ROLE_ASSISTANT,
+    CHAT_ROLE_USER,
+    DEFAULT_MATCH_HOUR,
+    DEFAULT_MATCH_MINUTE,
+    ERROR_API_KEY_MISSING,
+    FIFA_STADIUMS,
+    PAGE_ICON,
+    PAGE_LAYOUT,
+    PAGE_TITLE,
+    STADIUM_OPTIONS,
+    SUPPORTED_LANGUAGES,
+    USER_ROLES,
+    WELCOME_HEADER,
+    WELCOME_SUBHEADER,
 )
 
 # ── Custom CSS: Football Aesthetic + Accessibility ──
-st.markdown("""
+CUSTOM_CSS: str = """
 <style>
     /* ── CSS Variables for Theming ── */
     :root {
@@ -257,152 +262,34 @@ st.markdown("""
     .skip-link:focus {
         top: 0;
     }
+}
 </style>
-""", unsafe_allow_html=True)
+"""
 
-# ── Skip Navigation Link (Accessibility) ──
-st.markdown(
-    '<a href="#chat-content" class="skip-link">Skip to chat content</a>',
-    unsafe_allow_html=True,
-)
+# Load API key: Streamlit Cloud secrets first, then .env for local dev
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
+try:
+    GEMINI_API_KEY: Optional[str] = st.secrets.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY")
+except Exception:
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-# ── Header ──
-st.markdown("""
-<div class="header" role="banner">
-    <h1>⚽ Stadium Intelligence Assistant</h1>
-    <p>FIFA World Cup 2026 — Your AI guide for stadiums, navigation, and match day</p>
-</div>
-""", unsafe_allow_html=True)
-
-# ── Sidebar: Stadium & Match Context ──
-with st.sidebar:
-    st.markdown(
-        "<div class='sidebar-section' role='region' aria-label='Stadium selection'>"
-        "<h3>🏟️ Stadium</h3></div>",
-        unsafe_allow_html=True,
-    )
-    stadium = st.selectbox(
-        "Select venue",
-        ["", "MetLife Stadium", "SoFi Stadium", "AT&T Stadium",
-         "Mercedes-Benz Stadium", "Levi's Stadium", "NRG Stadium",
-         "Lincoln Financial Field", "Gillette Stadium"],
-        key="stadium",
-        label_visibility="collapsed",
-        help="Select the stadium venue you want to ask about",
-    )
-
-    st.markdown(
-        "<div class='sidebar-section' role='region' aria-label='Match day and time'>"
-        "<h3>📅 Match Day</h3></div>",
-        unsafe_allow_html=True,
-    )
-    col1, col2 = st.columns(2)
-    with col1:
-        match_date = st.date_input(
-            "Date", date.today(), key="match_date",
-            label_visibility="collapsed",
-        )
-    with col2:
-        match_time = st.time_input(
-            "Time",
-            datetime.now().time().replace(hour=20, minute=0),
-            key="match_time",
-            label_visibility="collapsed",
-        )
-
-    st.markdown(
-        "<div class='sidebar-section' role='region' aria-label='Language selection'>"
-        "<h3>🌐 Language</h3></div>",
-        unsafe_allow_html=True,
-    )
-    language = st.selectbox(
-        "Language",
-        ["English", "Spanish", "French", "German", "Portuguese", "Arabic"],
-        key="language",
-        label_visibility="collapsed",
-    )
-
-    st.markdown(
-        "<div class='sidebar-section' role='region' aria-label='User role selection'>"
-        "<h3>👤 Your Role</h3></div>",
-        unsafe_allow_html=True,
-    )
-    role = st.radio(
-        "Role",
-        ["😊 Fan", "📋 Organizer", "🦺 Volunteer", "👔 Staff"],
-        key="role",
-        label_visibility="collapsed",
-        index=0,
-    )
-    # Map display role to internal role
-    role_map = {
-        "😊 Fan": "fan",
-        "📋 Organizer": "organizer",
-        "🦺 Volunteer": "volunteer",
-        "👔 Staff": "staff",
-    }
-    user_role = role_map[role]
-
-    # Accessibility: High contrast toggle
-    st.markdown("---")
-    st.markdown(
-        "<div class='sidebar-section' role='region' aria-label='Accessibility settings'>"
-        "<h3>♿ Accessibility</h3></div>",
-        unsafe_allow_html=True,
-    )
-    high_contrast = st.checkbox("High Contrast Mode", key="high_contrast")
+# ── Helper Functions ──
+def _render_sidebar_section(title: str, aria_label: str) -> None:
+    """Render a sidebar section with proper accessibility attributes.
     
-    st.markdown("<br>", unsafe_allow_html=True)
+    Args:
+        title: Section title with emoji.
+        aria_label: ARIA label for the section.
+    """
     st.markdown(
-        "<div class='sidebar-section' role='region' aria-label='Keyboard shortcuts'>"
-        "<h3>⌨️ Keyboard Shortcuts</h3></div>",
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        "<small>"
-        "• <kbd>Enter</kbd> to send message<br>"
-        "• <kbd>Tab</kbd> to navigate<br>"
-        "• <kbd>Esc</kbd> to clear input"
-        "</small>",
+        f"<div class='sidebar-section' role='region' aria-label='{aria_label}'>"
+        f"<h3>{title}</h3></div>",
         unsafe_allow_html=True,
     )
 
-# Apply high contrast mode
-if high_contrast:
-    st.markdown(
-        '<script>document.body.classList.add("high-contrast");</script>',
-        unsafe_allow_html=True,
-    )
 
-# ── Initialize session state ──
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-if "assistant" not in st.session_state:
-    st.session_state.assistant = StadiumAssistant(api_key=GEMINI_API_KEY)
-
-# ── API Key Warning ──
-if not GEMINI_API_KEY:
-    st.warning(
-        "⚠️ GEMINI_API_KEY not found. "
-        "Add it to your .env file or Streamlit Cloud secrets.",
-        icon="⚠️",
-    )
-
-# ── Chat Display ──
-st.markdown(
-    '<div class="chat-scroll" id="chat-content" role="log" '
-    'aria-label="Chat conversation" aria-live="polite" aria-atomic="false">',
-    unsafe_allow_html=True,
-)
-
-# Screen reader announcements for dynamic content
-st.markdown(
-    '<div id="sr-announcements" class="chat-log" aria-live="assertive" aria-atomic="true"></div>',
-    unsafe_allow_html=True,
-)
-
-# Show welcome message if no messages
-if not st.session_state.messages:
+def _render_welcome_message() -> None:
+    """Render the welcome message with suggested questions."""
     st.markdown(
         """
         <div style="text-align: center; padding: 3rem 1rem; color: var(--text-muted);"
@@ -424,16 +311,160 @@ if not st.session_state.messages:
         unsafe_allow_html=True,
     )
 
-# Display chat messages
-for i, msg in enumerate(st.session_state.messages):
-    role_label = "You said" if msg["role"] == "user" else "Assistant replied"
-    bubble_class = "user-bubble" if msg["role"] == "user" else "assistant-bubble"
+
+def _render_chat_message(msg: dict[str, str]) -> None:
+    """Render a single chat message bubble.
+    
+    Args:
+        msg: Message dictionary with 'role' and 'content' keys.
+    """
+    role_label: str = "You said" if msg["role"] == CHAT_ROLE_USER else "Assistant replied"
+    bubble_class: str = "user-bubble" if msg["role"] == CHAT_ROLE_USER else "assistant-bubble"
+    content_preview: str = msg["content"][:100] if len(msg["content"]) > 100 else msg["content"]
+    
     st.markdown(
         f'<div class="{bubble_class}" role="article" '
-        f'aria-label="{role_label}: {msg["content"][:100]}">'
+        f'aria-label="{role_label}: {content_preview}">'
         f'{msg["content"]}</div>',
         unsafe_allow_html=True,
     )
+
+
+# ── Page Config ──
+st.set_page_config(
+    page_title=PAGE_TITLE,
+    page_icon=PAGE_ICON,
+    layout=PAGE_LAYOUT,
+)
+
+# ── Custom CSS: Football Aesthetic + Accessibility ──
+st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+
+# ── Skip Navigation Link (Accessibility) ──
+st.markdown(
+    '<a href="#chat-content" class="skip-link">Skip to chat content</a>',
+    unsafe_allow_html=True,
+)
+
+# ── Header ──
+st.markdown(
+    f"""
+    <div class="header" role="banner">
+        <h1>{WELCOME_HEADER}</h1>
+        <p>{WELCOME_SUBHEADER}</p>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+# ── Sidebar: Stadium & Match Context ──
+with st.sidebar:
+    _render_sidebar_section("🏟️ Stadium", "Stadium selection")
+    stadium = st.selectbox(
+        "Select venue",
+        STADIUM_OPTIONS,
+        key="stadium",
+        label_visibility="collapsed",
+        help="Select the stadium venue you want to ask about",
+    )
+
+    _render_sidebar_section("📅 Match Day", "Match day and time")
+    col1, col2 = st.columns(2)
+    with col1:
+        match_date = st.date_input(
+            "Date",
+            date.today(),
+            key="match_date",
+            label_visibility="collapsed",
+        )
+    with col2:
+        default_time = datetime.now().time().replace(
+            hour=DEFAULT_MATCH_HOUR, minute=DEFAULT_MATCH_MINUTE
+        )
+        match_time = st.time_input(
+            "Time",
+            default_time,
+            key="match_time",
+            label_visibility="collapsed",
+        )
+
+    _render_sidebar_section("🌐 Language", "Language selection")
+    language = st.selectbox(
+        "Language",
+        SUPPORTED_LANGUAGES,
+        key="language",
+        label_visibility="collapsed",
+    )
+
+    _render_sidebar_section("👤 Your Role", "User role selection")
+    role_display = st.radio(
+        "Role",
+        list(USER_ROLES.keys()),
+        key="role",
+        label_visibility="collapsed",
+        index=0,
+    )
+    user_role: str = USER_ROLES[role_display]
+
+    # Accessibility: High contrast toggle
+    st.markdown("---")
+    _render_sidebar_section("♿ Accessibility", "Accessibility settings")
+    high_contrast = st.checkbox("High Contrast Mode", key="high_contrast")
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    _render_sidebar_section("⌨️ Keyboard Shortcuts", "Keyboard shortcuts")
+    st.markdown(
+        "<small>"
+        "• <kbd>Enter</kbd> to send message<br>"
+        "• <kbd>Tab</kbd> to navigate<br>"
+        "• <kbd>Esc</kbd> to clear input"
+        "</small>",
+        unsafe_allow_html=True,
+    )
+
+# Apply high contrast mode
+if high_contrast:
+    st.markdown(
+        '<script>document.body.classList.add("high-contrast");</script>',
+        unsafe_allow_html=True,
+    )
+
+# ── Initialize session state ──
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+if "assistant" not in st.session_state:
+    from src.dataclasses import AssistantConfig
+    from src.assistant import StadiumAssistant
+    config = AssistantConfig(api_key=GEMINI_API_KEY)
+    st.session_state.assistant = StadiumAssistant(config)
+
+# ── API Key Warning ──
+if not GEMINI_API_KEY:
+    st.warning(
+        ERROR_API_KEY_MISSING,
+        icon="⚠️",
+    )
+
+# ── Chat Display ──
+st.markdown(
+    '<div class="chat-scroll" id="chat-content" role="log" '
+    'aria-label="Chat conversation" aria-live="polite" aria-atomic="false">',
+    unsafe_allow_html=True,
+)
+
+# Screen reader announcements for dynamic content
+st.markdown(
+    '<div id="sr-announcements" class="chat-log" aria-live="assertive" aria-atomic="true"></div>',
+    unsafe_allow_html=True,
+)
+
+# Show welcome message if no messages
+if not st.session_state.messages:
+    _render_welcome_message()
+
+# Display chat messages
+for msg in st.session_state.messages:
+    _render_chat_message(msg)
 
 st.markdown('</div>', unsafe_allow_html=True)
 
@@ -446,16 +477,19 @@ st.markdown(
 
 def handle_submit() -> None:
     """Process user input, get AI response, and update chat."""
-    user_msg = st.session_state.user_input.strip()
+    user_msg: str = st.session_state.user_input.strip()
     if not user_msg:
         return
 
     # Add user message
-    st.session_state.messages.append({"role": "user", "content": user_msg})
+    st.session_state.messages.append({
+        "role": CHAT_ROLE_USER,
+        "content": user_msg,
+    })
 
     # Get AI response
     with st.spinner("Thinking..."):
-        response = st.session_state.assistant.prepare_response(
+        response: str = st.session_state.assistant.prepare_response(
             user_query=user_msg,
             user_role=user_role,
             stadium=stadium,
@@ -466,7 +500,10 @@ def handle_submit() -> None:
         )
 
     # Add assistant response
-    st.session_state.messages.append({"role": "assistant", "content": response})
+    st.session_state.messages.append({
+        "role": CHAT_ROLE_ASSISTANT,
+        "content": response,
+    })
 
 
 with st.form(key="chat_form", clear_on_submit=True):
@@ -498,3 +535,8 @@ with st.sidebar:
     if st.button("🗑️ Clear Chat", use_container_width=True):
         st.session_state.messages = []
         st.rerun()
+
+
+# ── Main Execution Guard ──
+if __name__ == "__main__":
+    pass  # Streamlit apps run automatically
